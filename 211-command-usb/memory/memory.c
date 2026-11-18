@@ -1,9 +1,12 @@
 #include "memory.h"
 #include <stdio.h> // for printf()
 #include <stdint.h> // for uintptr_t
+#include <stdlib.h> // for malloc() and free()
 
 #include "hardware/regs/addressmap.h"
 #include "pico/stdlib.h"
+#include "command.h"
+#include "device.h"
 
 extern char __flash_binary_start;
 extern char __flash_binary_end;
@@ -17,6 +20,61 @@ extern char __bss_end__;
 extern char __HeapLimit;
 extern char __StackBottom;
 extern char __StackTop;
+
+uint32_t data_variable = 100;
+uint32_t bss_variable;
+
+int main(void);
+
+void fw_info(void) {
+    ++data_variable;
+    ++bss_variable;
+
+    uintptr_t main_address = (uintptr_t)main;
+    uintptr_t fw_info_address = (uintptr_t)fw_info;
+
+    const uint16_t *main_code = (const uint16_t *)(main_address & ~1u);
+    const uint16_t *fw_info_code =
+        (const uint16_t *)(fw_info_address & ~1u);
+
+    printf("%-15s %-10s %s\n", "object", "address", "value");
+    printf("%-15s 0x%08x  0x%04x\n",
+           "main", (unsigned)main_address, (unsigned)*main_code);
+    printf("%-15s 0x%08x  0x%04x\n",
+           "fw_info", (unsigned)fw_info_address, (unsigned)*fw_info_code);
+
+    printf("%-15s 0x%08x\n", "commands", (unsigned)(uintptr_t)commands);
+    for (uint i = 0; i < command_count; ++i) {
+        printf("- %-13s 0x%08x\n",
+               commands[i].name, (unsigned)(uintptr_t)commands[i].handler);
+    }
+
+    printf("%-15s 0x%08x  %s\n",
+           "DEVICE_PROJECT", (unsigned)(uintptr_t)DEVICE_PROJECT, DEVICE_PROJECT);
+    printf("%-15s 0x%08x  %s\n",
+           "DEVICE_BOARD", (unsigned)(uintptr_t)DEVICE_BOARD, DEVICE_BOARD);
+
+    printf("%-15s 0x%08x  %u\n",
+           "data_variable", (unsigned)(uintptr_t)&data_variable,
+           (unsigned)data_variable);
+    printf("%-15s 0x%08x  %u\n",
+           "bss_variable", (unsigned)(uintptr_t)&bss_variable,
+           (unsigned)bss_variable);
+
+    uint32_t stack_variable = 1946;
+    printf("%-15s 0x%08x  %u\n",
+           "stack_variable", (unsigned)(uintptr_t)&stack_variable,
+           (unsigned)stack_variable);
+
+    uint32_t *heap_variable = malloc(sizeof(uint32_t));
+    if (heap_variable != NULL) {
+        *heap_variable = 1951;
+        printf("%-15s 0x%08x  %u\n",
+               "heap_variable", (unsigned)(uintptr_t)heap_variable,
+               (unsigned)*heap_variable);
+        free(heap_variable);
+    }
+}
 
 static void row(const char *name, uintptr_t start, uintptr_t end) {
     printf("%-10s 0x%08x 0x%08x %8u\n", 
