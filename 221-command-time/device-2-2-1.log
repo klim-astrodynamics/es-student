@@ -1,0 +1,24 @@
+задание: 2.2.1
+проект: 221-command-time
+устройство: 2e8a:000a
+серийный номер: 5303284740E0551C
+порт: COM5
+начало: 2026-11-21T12:51:00
+   0.000 --> clk_info
+   0.167 <-- clk_info
+   0.168 <-- signal     set clock  measured clock
+   0.169 <-- clk_ref      12000        12001
+   0.170 <-- clk_sys     125000       125001
+   0.171 <-- clk_peri    125000       125000
+   0.172 <-- clk_usb      48000        48000
+   0.173 <-- clk_adc      48000        48000
+   0.174 <-- rosc             -         5743
+   2.042 --> info
+   2.134 <-- info
+   2.135 <-- project: 221-command-time
+   2.135 <-- repo: https://github.com/klimastrodynamics/es-student
+   2.135 <-- board: pico
+   2.136 <-- serial: 5303284740E0551C
+   2.136 <-- chip: manufacturer 0x927, part 0x0002, revision 2
+   2.136 <-- pico-sdk: 2.3.0
+итог: отправлено команд 2, принято строк 15

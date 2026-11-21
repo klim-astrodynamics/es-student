@@ -1,0 +1,177 @@
+#include "memory.h"
+#include <stdio.h> // for printf()
+#include <stdint.h> // for uintptr_t
+#include <stdlib.h> // for malloc() and free()
+
+#include "hardware/regs/addressmap.h"
+#include "pico/stdlib.h"
+#include "command.h"
+#include "device.h"
+#include "led.h"
+
+#define VECTOR_TABLE 0x10000100
+
+extern char __flash_binary_start;
+extern char __flash_binary_end;
+extern char __boot2_start__;
+extern char __boot2_end__;
+extern char __etext;
+extern char __data_start__;
+extern char __data_end__;
+extern char __bss_start__;
+extern char __bss_end__;
+extern char __HeapLimit;
+extern char __StackBottom;
+extern char __StackTop;
+
+uint32_t data_variable = 100;
+uint32_t bss_variable;
+
+int main(void);
+
+void fw_info(void) {
+    ++data_variable;
+    ++bss_variable;
+
+    uintptr_t main_address = (uintptr_t)main;
+    uintptr_t fw_info_address = (uintptr_t)fw_info;
+
+    const uint16_t *main_code = (const uint16_t *)(main_address & ~1u);
+    const uint16_t *fw_info_code =
+        (const uint16_t *)(fw_info_address & ~1u);
+
+    printf("%-15s %-10s %s\n", "object", "address", "value");
+    printf("%-15s 0x%08x  0x%04x\n",
+           "main", (unsigned)main_address, (unsigned)*main_code);
+    printf("%-15s 0x%08x  0x%04x\n",
+           "fw_info", (unsigned)fw_info_address, (unsigned)*fw_info_code);
+
+    printf("%-15s 0x%08x\n", "commands", (unsigned)(uintptr_t)commands);
+    for (uint i = 0; i < command_count; ++i) {
+        printf("- %-13s 0x%08x\n",
+               commands[i].name, (unsigned)(uintptr_t)commands[i].handler);
+    }
+
+    printf("%-15s 0x%08x  %s\n",
+           "DEVICE_PROJECT", (unsigned)(uintptr_t)DEVICE_PROJECT, DEVICE_PROJECT);
+    printf("%-15s 0x%08x  %s\n",
+           "DEVICE_BOARD", (unsigned)(uintptr_t)DEVICE_BOARD, DEVICE_BOARD);
+
+    printf("%-15s 0x%08x  %u\n",
+           "data_variable", (unsigned)(uintptr_t)&data_variable,
+           (unsigned)data_variable);
+    printf("%-15s 0x%08x  %u\n",
+           "bss_variable", (unsigned)(uintptr_t)&bss_variable,
+           (unsigned)bss_variable);
+
+    uint32_t stack_variable = 1946;
+    printf("%-15s 0x%08x  %u\n",
+           "stack_variable", (unsigned)(uintptr_t)&stack_variable,
+           (unsigned)stack_variable);
+
+    uint32_t *heap_variable = malloc(sizeof(uint32_t));
+    if (heap_variable != NULL) {
+        *heap_variable = 1951;
+        printf("%-15s 0x%08x  %u\n",
+               "heap_variable", (unsigned)(uintptr_t)heap_variable,
+               (unsigned)*heap_variable);
+        free(heap_variable);
+    }
+}
+
+static void row(const char *name, uintptr_t start, uintptr_t end) {
+    printf("%-10s 0x%08x 0x%08x %8u\n", 
+           name, (unsigned)start, (unsigned)end, (unsigned)(end - start));
+}
+
+void mem_info(void) {
+    // Преобразуем все адреса в числа заранее для безопасной арифметики
+    uintptr_t flash_start = XIP_BASE;
+    uintptr_t flash_end   = XIP_BASE + PICO_FLASH_SIZE_BYTES;
+    
+    uintptr_t img_start   = (uintptr_t)&__flash_binary_start;
+    uintptr_t img_end     = (uintptr_t)&__flash_binary_end;
+    
+    uintptr_t boot2_start = (uintptr_t)&__boot2_start__;
+    uintptr_t boot2_end   = (uintptr_t)&__boot2_end__;
+    
+    uintptr_t text_start  = boot2_end;
+    uintptr_t text_end    = (uintptr_t)&__etext;
+    
+    uintptr_t data_ram_s  = (uintptr_t)&__data_start__;
+    uintptr_t data_ram_e  = (uintptr_t)&__data_end__;
+    uintptr_t data_size   = data_ram_e - data_ram_s;
+    
+    uintptr_t data_fl_s   = text_end;
+    uintptr_t data_fl_e   = data_fl_s + data_size;
+    
+    uintptr_t bss_start   = (uintptr_t)&__bss_start__;
+    uintptr_t bss_end     = (uintptr_t)&__bss_end__;
+    
+    uintptr_t heap_start  = bss_end;
+    uintptr_t heap_end    = (uintptr_t)&__HeapLimit;
+    
+    uintptr_t stack_start = (uintptr_t)&__StackBottom;
+    uintptr_t stack_end   = (uintptr_t)&__StackTop;
+
+    // Вывод таблицы
+    printf("%-10s %-10s %-10s %8s\n", "area", "start", "end", "size");
+    row("flash",      flash_start, flash_end);
+    row("sram",       SRAM_BASE,   SRAM_END);
+    row("rom",        ROM_BASE,    ROM_BASE + 0x4000);
+    row("image",      img_start,   img_end);
+    row("free",       img_end,     flash_end);
+    row("boot2",      boot2_start, boot2_end);
+    row("text",       text_start,  text_end);
+    row("data flash", data_fl_s,   data_fl_e);
+    row("data ram",   data_ram_s,  data_ram_e);
+    row("bss",        bss_start,   bss_end);
+    row("heap",       heap_start,  heap_end);
+    row("stack",      stack_start, stack_end);
+
+    // Расчёт итогов
+    unsigned boot2_sz    = (unsigned)(boot2_end - boot2_start);
+    unsigned text_sz     = (unsigned)(text_end - text_start);
+    unsigned data_sz     = (unsigned)data_size;
+    unsigned bss_sz      = (unsigned)(bss_end - bss_start);
+    
+    unsigned flash_used  = boot2_sz + text_sz + data_sz;
+    unsigned flash_free  = (unsigned)(flash_end - img_end);
+    unsigned flash_total = (unsigned)(flash_end - flash_start);
+    
+    unsigned ram_used    = data_sz + bss_sz;
+    unsigned heap_sz     = (unsigned)(heap_end - heap_start);
+    unsigned stack_sz    = (unsigned)(stack_end - stack_start);
+
+    // Вывод итоговой сводки
+    printf("\ntotal\n");
+    printf("  flash image %u = boot2 %u + text %u + data %u\n", 
+           flash_used, boot2_sz, text_sz, data_sz);
+    printf("  flash free %u of %u\n", 
+           flash_free, flash_total);
+    printf("  ram used %u = data %u + bss %u\n", 
+           ram_used, data_sz, bss_sz);
+    printf("  ram free %u for heap and %u for stack\n", 
+           heap_sz, stack_sz);
+}
+
+void boot_info(void) {
+    const uint32_t *vectors = (const uint32_t *)VECTOR_TABLE;
+    uint32_t stack_top = vectors[0];
+    uint32_t reset_handler = vectors[1];
+
+    const volatile uint32_t *gpio_in = (const volatile uint32_t *)0xd0000004u;
+
+    uint led_gpio = led_pin();
+    uint32_t level = (*gpio_in >> led_gpio) & 1u;
+
+    printf("vector table   0x%08x\n", (unsigned)VECTOR_TABLE);
+    printf("  stack top    0x%08x\n", (unsigned)stack_top);
+    printf("  reset        0x%08x\n", (unsigned)reset_handler);
+    printf("  reset (even) 0x%08x\n",
+           (unsigned)(reset_handler & ~1u));
+
+    printf("gpio in        0x%08x\n", (unsigned)(uintptr_t)gpio_in);
+    printf("  led bit      %u\n", (unsigned)level);
+    printf("  gpio_get     %u\n", (unsigned)gpio_get(led_gpio));
+}
